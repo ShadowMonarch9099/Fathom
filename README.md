@@ -1,31 +1,73 @@
 # Fathom
 
-A 2D, frontend-only game for learning about ocean life. Instead of reading a wall of text, players pilot a submarine from the sunlit surface to the bottom of the Mariana Trench and discover real creatures along the way.
+A 2D pixel-art ocean exploration game that teaches marine biology without walls of text. Pilot a submarine from the sunlit surface to the bottom of the Mariana Trench, find and scan **141 real species**, and build your own field guide as you go.
 
-`index.html` holds two things:
+Frontend only: plain HTML, CSS and JavaScript with no build step and no framework.
 
-1. **A playable prototype**: shoreline landing screen, auto-descent, WASD/arrow steering, sunlight falloff with headlights, real depth/pressure/temperature readouts, 15 real creatures to scan, sonar ping, zone banners, a surface debrief quiz and a field journal saved in `localStorage`.
-2. **The solution blueprint**: problem statement, core loop, the five ocean zones, the full gamified feature set (tagged MVP / V1 / Later), screen flow, content model, technical architecture and roadmap.
+## Play
 
-## Run it
-
-No build step. Open `index.html` in a browser, or serve the folder:
+Open `index.html` in a browser, or run the bundled static server:
 
 ```bash
-npx serve .
+node tools/serve.mjs
 ```
 
-## Controls
+Then visit http://localhost:5173.
+
+## What's in the game
+
+- **Five real ocean zones**: Sunlight, Twilight, Midnight, Abyss and Hadal, with true depth, pressure, temperature and sunlight readouts.
+- **A side-on ocean**: beach, seagrass, coral reef and kelp forest by the shore, the continental slope, a whale fall, a shipwreck, an abyssal plain, a hydrothermal vent field and the Challenger Deep trench.
+- **Dithered pixel lighting**: sunlight fades with depth, the headlights cut a cone through the dark (aim them with the mouse), and bioluminescent animals glow on their own.
+- **Scanning and studying**: hold still near a lit animal to log it. Scan it on three dives to study it. Fast movement scares small animals away.
+- **Sonar and radar**: ping to reveal hidden animals and landmarks.
+- **Hangar upgrades**: pressure hull (unlocks deeper zones), battery, headlights, sonar, thrusters and scanner, paid for with research points.
+- **Field guide**: every species has a pixel sprite, a short fact, depth range, size and diet. Logged species unlock a Wikipedia summary and photo plus a chart of the depths where scientists have recorded them (OBIS).
+- **World register**: search any of the 240,000+ marine species in WoRMS, with live Wikipedia and OBIS data.
+- **Debrief quiz** after every dive (fact, zone and photo-ID questions), **26 awards**, a **daily expedition**, and **day and night dives** (some animals only rise to the surface after dark).
+- **Synthesised audio**: generative music, ambience and effects made with Web Audio. No sound files.
+- **Settings**: volumes, pixel size, CRT scanlines, screen shake, reduced motion, Explorer mode (no depth or battery limits), labels, larger text, high-contrast HUD, online data, and save export/import/reset.
+- **Controls**: keyboard, mouse, gamepad and touch.
 
 | Input | Action |
 | --- | --- |
-| W A S D / arrow keys | Steer the submarine |
+| W A S D / arrows | Steer |
 | Shift | Boost |
 | Space | Sonar ping |
-| Touch: hold and drag | Steer toward your finger |
+| L | Headlights |
+| Mouse | Aim headlights |
+| J | Field guide |
+| M | Mute |
+| Esc | Pause / menu |
 
-Rise back to the surface to end a dive.
+## Species data
 
-## Content
+`tools/species.source.mjs` holds the hand-written list: names, depths, habitats, one fact per species and pixel-art parameters. `tools/build-species.mjs` enriches it with:
 
-Creature facts are simplified for play and should be checked against NOAA Ocean Exploration, MBARI, Smithsonian Ocean, WoRMS and the IUCN Red List before release.
+- [WoRMS](https://www.marinespecies.org/): accepted names, AphiaIDs and classification (CC BY 4.0)
+- [OBIS](https://obis.org/): sighting record counts and depth histograms (rarity is based on record counts)
+- [Wikipedia](https://en.wikipedia.org/): summaries and photo links (CC BY-SA 4.0)
+
+and writes `js/data/species.js`. To add a species, add an entry to the source file and run:
+
+```bash
+node tools/build-species.mjs
+```
+
+## Project layout
+
+```
+index.html            game shell, HUD and menus
+css/style.css         UI styles
+js/core.js            depth scale, terrain, save data, upgrades, awards, daily goals
+js/audio.js           Web Audio music and effects
+js/sprites.js         procedural pixel-art creatures and props
+js/world.js           creature placement, scenery and behaviour
+js/game.js            engine: camera, sub, lighting, scanning, sonar, rendering
+js/ui.js              menus, HUD, field guide, hangar, awards, settings, debrief
+js/data/species.js    generated species database
+tools/                data build script and local server
+docs/blueprint.html   original design blueprint
+```
+
+Progress is saved in the browser's localStorage.
