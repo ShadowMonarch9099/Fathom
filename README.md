@@ -4,7 +4,9 @@ A 2D pixel-art ocean exploration game that teaches marine biology without walls 
 
 Frontend only: plain HTML, CSS and JavaScript with no build step and no framework.
 
-## Play
+**Play it at [deepseadive.vercel.app](https://deepseadive.vercel.app/)**
+
+## Run locally
 
 Open `index.html` in a browser, or run the bundled static server:
 
