@@ -411,7 +411,7 @@ const cache = new Map();
 function render(art, L, frame) {
   const pad = Math.ceil(L * 2.4) + 10;
   const cv = document.createElement('canvas'); cv.width = cv.height = pad;
-  g = cv.getContext('2d'); glows = [];
+  g = cv.getContext('2d', { willReadFrequently: true }); glows = [];
   g.translate(pad / 2, pad / 2);
   (D[art.t] || D.fish)(L, art, frame / FRAMES);
   const sp = pixelate(cv, art.clear);
@@ -426,6 +426,15 @@ S.get = (sp, frame = 0) => {
 };
 S.FRAMES = FRAMES;
 
+/* Build every species sprite ahead of time in small idle slices, so nothing is
+   generated mid-dive when an animal first scrolls into view. */
+S.prewarm = (list, done) => {
+  const jobs = []; list.forEach(sp => { for (let f = 0; f < FRAMES; f++) jobs.push([sp, f]); });
+  const idle = window.requestIdleCallback || (fn => setTimeout(() => fn({ timeRemaining: () => 8 }), 30));
+  const work = dl => { while (jobs.length && dl.timeRemaining() > 2) { const [sp, f] = jobs.shift(); S.get(sp, f); } if (jobs.length) idle(work); else if (done) done(); };
+  idle(work);
+};
+
 /* Draw a species into a UI canvas, scaled up with crisp pixels. */
 S.thumb = (sp, cv, { silhouette = false, frame = 1, maxScale = 6 } = {}) => {
   const s = S.get(sp, frame), c = cv.getContext('2d');
@@ -438,7 +447,7 @@ S.thumb = (sp, cv, { silhouette = false, frame = 1, maxScale = 6 } = {}) => {
 };
 
 /* ---------- props: submarine, ship, scenery ---------- */
-const prop = (key, w, h, fn) => { if (cache.has(key)) return cache.get(key); const cv = document.createElement('canvas'); cv.width = w * 2 + 8; cv.height = h * 2 + 8; g = cv.getContext('2d'); glows = []; g.translate(cv.width / 2, cv.height / 2); fn(); const s = pixelate(cv, false); s.glows = glows; cache.set(key, s); return s; };
+const prop = (key, w, h, fn) => { if (cache.has(key)) return cache.get(key); const cv = document.createElement('canvas'); cv.width = w * 2 + 8; cv.height = h * 2 + 8; g = cv.getContext('2d', { willReadFrequently: true }); glows = []; g.translate(cv.width / 2, cv.height / 2); fn(); const s = pixelate(cv, false); s.glows = glows; cache.set(key, s); return s; };
 
 S.sub = frame => prop('sub' + frame, 34, 20, () => {
   const pr = [0, .6, 1, .6][frame];

@@ -59,7 +59,7 @@ F.floorY = x => F.yAt(F.floorM(x)) + (F.hash(x | 0, 7) < .2 ? 1 : 0);
 const KEY = 'fathom.save.v2';
 F.defaultSettings = () => ({
   master: .8, music: .55, sfx: .8, ambience: .7, muted: false,
-  pixel: 'auto', scanlines: true, shake: true, reducedMotion: false,
+  pixel: 'auto', scanlines: true, showFps: false, shake: true, reducedMotion: false,
   explorer: false, labels: true, hints: true, autoLights: true,
   largeText: false, contrast: false, online: true,
 });

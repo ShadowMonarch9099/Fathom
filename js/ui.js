@@ -150,6 +150,7 @@ function toast(text, kind = 'info', ms = 4200) {
   setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 600); }, ms);
 }
 F.on('toast', ({ text, kind, once }) => { if (once) { if (shownOnce.has(once)) return; shownOnce.add(once); } toast(text, kind, kind === 'milestone' ? 5500 : 4200); });
+F.on('fps', v => { if (F.save.settings.showFps) $('fps').textContent = v + ' FPS · ' + G.W + '×' + G.H + ' @' + G.SCALE + 'x'; });
 F.on('lights', on => { $('tLights').classList.toggle('on', on); });
 
 const discQ = []; let discBusy = false;
@@ -473,7 +474,7 @@ const SETTINGS = [
   ['master', 'range', 'Master volume'], ['music', 'range', 'Music'], ['sfx', 'range', 'Sound effects'], ['ambience', 'range', 'Ocean ambience'], ['muted', 'switch', 'Mute everything', 'Shortcut: M'],
   ['Display'],
   ['pixel', 'choice', 'Pixel size', 'Bigger pixels look chunkier and run faster.', [['auto', 'Auto'], ['2', '2×'], ['3', '3×'], ['4', '4×']]],
-  ['scanlines', 'switch', 'CRT scanlines', 'A subtle retro screen effect.'], ['shake', 'switch', 'Screen shake', 'When the hull is under stress or you bump the seafloor.'], ['reducedMotion', 'switch', 'Reduce motion', 'Calms menu animations.'],
+  ['scanlines', 'switch', 'CRT scanlines', 'A subtle retro screen effect.'], ['showFps', 'switch', 'Show FPS', 'Frame rate counter at the top of the screen.'], ['shake', 'switch', 'Screen shake', 'When the hull is under stress or you bump the seafloor.'], ['reducedMotion', 'switch', 'Reduce motion', 'Calms menu animations.'],
   ['Gameplay'],
   ['explorer', 'switch', 'Explorer mode', 'No depth or battery limits. Good for classrooms and quick exploring.'], ['autoLights', 'switch', 'Automatic headlights', 'Switch lights on when sunlight fades.'], ['labels', 'switch', 'Name labels', 'Show names above species you have logged.'], ['hints', 'switch', 'Control hints', 'Show tips at the start of a dive.'],
   ['Accessibility'],
@@ -510,6 +511,7 @@ renderers.settings = () => {
 function applySettings() {
   const s = F.save.settings; F.persist();
   body.classList.toggle('no-crt', !s.scanlines);
+  $('fps').hidden = !s.showFps;
   body.classList.toggle('reduced-motion', !!s.reducedMotion);
   body.classList.toggle('hud-contrast', !!s.contrast);
   document.documentElement.classList.toggle('large-text', !!s.largeText);
@@ -533,6 +535,7 @@ function applySettings() {
 })();
 
 /* ---------- boot ---------- */
+S.prewarm(F.SPECIES.slice().sort((a, b) => a.m - b.m));
 applySettings();
 G.start();
 G.toMenu();

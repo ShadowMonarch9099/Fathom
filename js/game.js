@@ -3,23 +3,95 @@
 const F = window.Fathom, S = F.sprites, Wd = F.world, A = F.audio, TAU = F.TAU;
 const G = F.game = { state: 'menu', night: false, touch: { x: 0, y: 0, boost: false } };
 
-const view = document.getElementById('view'), ctx = view.getContext('2d');
+const view = document.getElementById('view'), ctx = view.getContext('2d', { alpha: false });
 const fx = document.getElementById('fx'), fctx = fx.getContext('2d');
-let W = 480, H = 300, SCALE = 3, DPR = 1;
-let lm = new Float32Array(1), img = null;
+// Darkness is drawn as a dithered black mask on its own small canvas, so the main
+// canvas never has to be read back from the GPU.
+const mask = document.createElement('canvas'), mctx = mask.getContext('2d');
+let W = 480, H = 300, SCALE = 3, DPR = 1, maskImg = null, mask32 = null;
+let lm = new Float32Array(1);
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + .5) / 16);
+let autoBump = 0, needsRender = true, fxDirty = false;
+const LITTLE = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
 
 G.resize = () => {
   const s = F.save.settings, iw = Math.max(320, window.innerWidth || 0), ih = Math.max(240, window.innerHeight || 0);
-  SCALE = s.pixel === 'auto' ? F.clamp(Math.round(Math.min(iw / 460, ih / 280)), 2, 5) : +s.pixel;
+  SCALE = s.pixel === 'auto' ? F.clamp(Math.round(Math.min(iw / 460, ih / 280)) + autoBump, 2, 7) : +s.pixel;
   W = Math.ceil(iw / SCALE); H = Math.ceil(ih / SCALE);
   view.width = W; view.height = H; view.style.width = W * SCALE + 'px'; view.style.height = H * SCALE + 'px';
-  DPR = Math.min(2, window.devicePixelRatio || 1);
-  fx.width = iw * DPR; fx.height = ih * DPR; fx.style.width = iw + 'px'; fx.style.height = ih + 'px';
-  lm = new Float32Array(W * H); img = ctx.createImageData(W, H);
+  DPR = Math.min(1.5, window.devicePixelRatio || 1);
+  fx.width = Math.round(iw * DPR); fx.height = Math.round(ih * DPR); fx.style.width = iw + 'px'; fx.style.height = ih + 'px';
+  mask.width = W; mask.height = H; maskImg = mctx.createImageData(W, H); mask32 = new Uint32Array(maskImg.data.buffer);
+  lm = new Float32Array(W * H);
   ctx.imageSmoothingEnabled = false;
-  G.W = W; G.H = H; G.SCALE = SCALE;
+  skyStrips = {}; terrainCache.clear();
+  G.W = W; G.H = H; G.SCALE = SCALE; needsRender = true;
 };
+
+/* ---------- cached backgrounds ---------- */
+const WORLD_PAD = 80;
+const waterStrips = {};
+let skyStrips = {};
+function waterStrip(night) {
+  if (waterStrips[night]) return waterStrips[night];
+  const c = document.createElement('canvas'); c.width = 1; c.height = F.WORLD_BOTTOM + WORLD_PAD; const g = c.getContext('2d');
+  for (let y = 0; y < c.height; y++) { g.fillStyle = rgb(waterRGB(F.metersAt(y), night)); g.fillRect(0, y, 1, 1); }
+  return waterStrips[night] = c;
+}
+const SKY = { day: [[86, 160, 208], [214, 236, 240]], night: [[6, 12, 28], [28, 44, 74]] };
+function skyStrip(night) {
+  if (skyStrips[night]) return skyStrips[night];
+  const [top, bot] = SKY[night ? 'night' : 'day'], h = Math.ceil(H * .56) + 8;
+  const c = document.createElement('canvas'); c.width = 1; c.height = h; const g = c.getContext('2d');
+  for (let y = 0; y < h; y++) { const q = Math.floor(F.clamp(y / (H * .56), 0, 1) * 12) / 12; g.fillStyle = rgb(top.map((v, i) => v + (bot[i] - v) * q)); g.fillRect(0, y, 1, 1); }
+  return skyStrips[night] = c;
+}
+let islands = null;
+function islandStrip() {
+  if (islands) return islands;
+  const x0 = Math.floor(F.WORLD_X[0] * .25) - 20, w = Math.ceil((F.WORLD_X[1] - F.WORLD_X[0]) * .25) + 1200;
+  const make = col => { const c = document.createElement('canvas'); c.width = w; c.height = 12; const g = c.getContext('2d'); g.fillStyle = col;
+    for (let x = 0; x < w; x++) { const wx = x + x0; const h = Math.round(Math.max(0, Math.sin(wx * .011) * 7 + Math.sin(wx * .037) * 3 - 3)); if (h > 0) g.fillRect(x, 12 - h, 1, h); }
+    return c; };
+  return islands = { x0, day: make('#7fa9b6'), night: make('#18263a') };
+}
+// Terrain is baked into 128 px chunks the first time they come into view.
+const CH = 128, terrainCache = new Map();
+function terrainChunk(ix, iy) {
+  const key = ix + ',' + iy;
+  if (terrainCache.has(key)) return terrainCache.get(key);
+  const X0 = ix * CH, Y0 = iy * CH;
+  let any = false;
+  for (let x = 0; x < CH; x += 4) if (F.floorY(X0 + x) - 2 < Y0 + CH) { any = true; break; }
+  let c = null;
+  if (any) {
+    c = document.createElement('canvas'); c.width = CH; c.height = CH; const g = c.getContext('2d');
+    for (let x = 0; x < CH; x++) {
+      const wx = X0 + x, fys = Math.round(F.floorY(wx)) - Y0;
+      if (fys >= CH) continue;
+      const m = F.floorM(wx), col = floorColor(m, wx), ys = Math.max(0, fys);
+      g.fillStyle = rgb(col); g.fillRect(x, ys, 1, CH - ys);
+      if (fys >= 0) { g.fillStyle = rgb(col.map(v => Math.min(255, v * 1.35 + 10))); g.fillRect(x, fys, 1, 1); if (m < 0 && m > -20) { g.fillStyle = '#5f9a44'; g.fillRect(x, fys, 1, 2); } }
+      for (let j = 0; j < 3; j++) { const yy = fys + 3 + Math.floor(F.hash(wx, j) * 40); if (yy >= 0 && yy < CH) { g.fillStyle = rgb(col.map(v => v * (F.hash(wx, j + 9) < .5 ? .75 : 1.2))); g.fillRect(x, yy, 1, 1); } }
+    }
+  }
+  if (terrainCache.size > 260) terrainCache.delete(terrainCache.keys().next().value);
+  terrainCache.set(key, c);
+  return c;
+}
+// Kelp sway frames, cached per height bucket and phase step.
+const kelpCache = new Map(), KELP_STEPS = 12;
+function kelpFrame(h, step) {
+  const key = h + ':' + step;
+  if (kelpCache.has(key)) return kelpCache.get(key);
+  const c = document.createElement('canvas'); c.width = 24; c.height = h + 4; const g = c.getContext('2d');
+  const ph = step / KELP_STEPS * TAU, base = h + 2, ox = 12;
+  for (let i = 0; i < h; i++) { const k = i / h, px = Math.round(ox + Math.sin(ph + k * 2.4) * 6 * k);
+    g.fillStyle = '#6f6a22'; g.fillRect(px, base - i, 1, 1);
+    if (i % 7 === 3) { const s = (i % 14 === 3) ? 1 : -1; g.fillStyle = '#8f8a2c'; g.fillRect(px + (s > 0 ? 1 : -4), base - i, 4, 1); g.fillRect(px + (s > 0 ? 2 : -3), base - i - 1, 2, 1); g.fillStyle = '#c9a83a'; g.fillRect(px, base - i - 1, 1, 1); } }
+  kelpCache.set(key, c);
+  return c;
+}
 
 /* ---------- state ---------- */
 const sub = G.sub = { x: 10, y: 2, vx: 0, vy: 0, face: 1, frame: 0, lights: false, battery: 100, hull: 100, aim: 0 };
@@ -40,7 +112,7 @@ const MILESTONES = [
   { m: 8849, text: '8,849 m · Mount Everest would only just fit in the water above you' },
 ];
 
-const setState = s => { G.state = s; stateT = 0; F.emit('state', s); };
+const setState = s => { G.state = s; stateT = 0; needsRender = true; F.emit('state', s); };
 
 /* ---------- dive lifecycle ---------- */
 G.toMenu = () => {
@@ -314,8 +386,11 @@ function render() {
   const night = G.night;
   // sky
   if (horizon > 0) {
-    const top = night ? [6, 12, 28] : [86, 160, 208], bot = night ? [28, 44, 74] : [214, 236, 240];
-    for (let y = 0; y < Math.min(H, horizon + 4); y++) { const k = F.clamp((y + (H * .56 - horizon)) / (H * .56), 0, 1); const q = Math.floor(k * 12) / 12; ctx.fillStyle = rgb(top.map((v, i) => v + (bot[i] - v) * q)); ctx.fillRect(0, y, W, 1); }
+    const [top, bot] = SKY[night ? 'night' : 'day'];
+    const rows = Math.min(H, horizon + 4), s0 = Math.round(H * .56 - horizon), strip = skyStrip(night);
+    if (s0 < 0) { ctx.fillStyle = rgb(top); ctx.fillRect(0, 0, W, Math.min(rows, -s0)); }
+    const src0 = Math.max(0, s0), dst0 = src0 - s0, n = Math.min(rows - dst0, strip.height - src0);
+    if (n > 0) ctx.drawImage(strip, 0, src0, 1, n, 0, dst0, W, n);
     if (night) {
       for (let i = 0; i < 90; i++) { const x = Math.floor(F.hash(i, 3) * W), y = Math.floor(F.hash(i, 9) * (horizon - 10)); if (y < horizon - 6) { ctx.fillStyle = F.hash(i, 5) < .2 ? '#ffffff' : '#9fb3d0'; if (Math.sin(t * 2 + i) > -.6) ctx.fillRect(x, y, 1, 1); } }
       circ(W * .8, horizon - H * .42, 9, '#e8ecdc'); circ(W * .8 + 3, horizon - H * .42 - 2, 8, rgb(top.map((v, i) => v + (bot[i] - v) * .25)));
@@ -323,14 +398,14 @@ function render() {
       circ(W * .8, horizon - H * .42, 16, 'rgba(255,240,190,.35)'); circ(W * .8, horizon - H * .42, 11, '#fff2c4');
     }
     // distant islands
-    ctx.fillStyle = night ? '#18263a' : '#7fa9b6';
-    for (let x = 0; x < W; x++) { const wx = x + cx * .25; const h = Math.max(0, Math.sin(wx * .011) * 7 + Math.sin(wx * .037) * 3 - 3); if (h > 0) ctx.fillRect(x, horizon - Math.round(h), 1, Math.round(h)); }
+    const isl = islandStrip();
+    ctx.drawImage(night ? isl.night : isl.day, Math.round(isl.x0 - cx * .25), horizon - 12);
     for (const c of clouds) { const s = S.cloud(c.seed); const x = Math.round(((c.x + t * c.v - cx * .15) % (W + 160) + W + 160) % (W + 160) - 80), y = Math.round(horizon - H * .56 + c.y * H * .8); ctx.globalAlpha = night ? .25 : 1; ctx.drawImage(s.c, x, y); ctx.globalAlpha = 1; }
     if (!night) for (const b of birds) { const s = S.bird(Math.floor(t * 4 + b.ph) % 2); const x = Math.round(((b.x + t * b.v - cx * .3) % (W + 60) + W + 60) % (W + 60) - 30), y = Math.round(horizon - H * .56 + b.y * H * .8 + Math.sin(t + b.ph) * 3); ctx.drawImage(s.c, x, y); }
   }
   // water rows
   const y0 = Math.max(0, horizon);
-  for (let y = y0; y < H; y++) { ctx.fillStyle = rgb(waterRGB(F.metersAt(y + cy), night)); ctx.fillRect(0, y, W, 1); }
+  if (y0 < H) { const ws = waterStrip(night), sy = y0 + cy, n = Math.min(H - y0, ws.height - sy); if (n > 0) ctx.drawImage(ws, 0, sy, 1, n, 0, y0, W, n); }
   // light rays
   if (!night && cy < 400) {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -358,13 +433,8 @@ function render() {
   for (const s of smoke) { ctx.fillStyle = s.life > 2 ? '#1a1514' : '#2a2422'; const r = 2 + (5 - s.life) * .8; ctx.fillRect(Math.round(s.x - r / 2), Math.round(s.y), Math.round(r), Math.round(r)); }
   // terrain
   ctx.restore();
-  for (let x = 0; x < W; x++) {
-    const wx = x + cx, fyw = F.floorY(wx), fys = Math.round(fyw - cy);
-    if (fys >= H) continue;
-    const m = F.floorM(wx), col = floorColor(m, wx), ys = Math.max(0, fys);
-    ctx.fillStyle = rgb(col); ctx.fillRect(x, ys, 1, H - ys);
-    if (fys >= 0) { ctx.fillStyle = rgb(col.map(v => Math.min(255, v * 1.35 + 10))); ctx.fillRect(x, fys, 1, 1); if (m < 0 && m > -20) { ctx.fillStyle = '#5f9a44'; ctx.fillRect(x, fys, 1, 2); } }
-    for (let j = 0; j < 3; j++) { const yy = fys + 3 + Math.floor(F.hash(wx, j) * 40); if (yy >= 0 && yy < H) { ctx.fillStyle = rgb(col.map(v => v * (F.hash(wx, j + 9) < .5 ? .75 : 1.2))); ctx.fillRect(x, yy, 1, 1); } }
+  for (let iy = Math.floor(cy / CH); iy * CH < cy + H; iy++) for (let ix = Math.floor(cx / CH); ix * CH < cx + W; ix++) {
+    const c = terrainChunk(ix, iy); if (c) ctx.drawImage(c, ix * CH - cx, iy * CH - cy);
   }
   ctx.save(); ctx.translate(-cx, -cy);
   // creatures
@@ -386,7 +456,7 @@ function render() {
   ctx.fillStyle = '#8a7a66'; for (const d of dust) ctx.fillRect(Math.round(d.x), Math.round(d.y), 1, 1);
   ctx.restore();
   const subM = F.metersAt(sub.y);
-  if (cy > -H) { for (const p of snow) { const sx = Math.floor(((p.x * W * 1.2 - cx * (.6 + p.s * .4)) % W + W) % W), sy = Math.floor(((p.y * H + t * (3 + p.s * 4) - cy * (.6 + p.s * .4)) % H + H) % H); if (sy < horizon + 4) continue; ctx.fillStyle = p.s > .7 ? '#d8e2e6' : '#9fb0b8'; ctx.fillRect(sx, sy, 1, 1); } }
+  if (cy > -H) for (const bright of [false, true]) { ctx.fillStyle = bright ? '#d8e2e6' : '#9fb0b8'; for (const p of snow) { if ((p.s > .7) !== bright) continue; const sx = Math.floor(((p.x * W * 1.2 - cx * (.6 + p.s * .4)) % W + W) % W), sy = Math.floor(((p.y * H + t * (3 + p.s * 4) - cy * (.6 + p.s * .4)) % H + H) % H); if (sy < horizon + 4) continue; ctx.fillRect(sx, sy, 1, 1); } }
 
   // lighting pass
   const dark = G.state !== 'menu' && (cy > 0 || night) && (F.ambient(F.metersAt(cy + H)) < .97 || night);
@@ -423,10 +493,9 @@ function drawCreature(c, x, y, frame) {
   else ctx.drawImage(s.c, sx - s.ax, sy - s.ay);
 }
 function drawKelp(d) {
-  const top = d.h, base = d.y; ctx.fillStyle = '#6f6a22';
-  let px = d.x;
-  for (let i = 0; i < top; i++) { const k = i / top; px = d.x + Math.sin(t * .9 + d.ph + k * 2.4) * 6 * k; ctx.fillRect(Math.round(px), Math.round(base - i), 1, 1);
-    if (i % 7 === 3) { const s = (i % 14 === 3) ? 1 : -1; ctx.fillStyle = '#8f8a2c'; ctx.fillRect(Math.round(px) + (s > 0 ? 1 : -4), Math.round(base - i), 4, 1); ctx.fillRect(Math.round(px) + (s > 0 ? 2 : -3), Math.round(base - i) - 1, 2, 1); ctx.fillStyle = '#c9a83a'; ctx.fillRect(Math.round(px), Math.round(base - i) - 1, 1, 1); ctx.fillStyle = '#6f6a22'; } }
+  const h = Math.round(d.h / 10) * 10, ph = ((t * .9 + d.ph) % TAU + TAU) % TAU;
+  const fr = kelpFrame(h, Math.floor(ph / TAU * KELP_STEPS) % KELP_STEPS);
+  ctx.drawImage(fr, Math.round(d.x) - 12, Math.round(d.y) - h - 2);
 }
 function nose() { return [sub.x + sub.face * 17, sub.y + 3]; }
 function aimAngle() {
@@ -474,21 +543,26 @@ function buildLightmap(cx, cy, horizon, night, glowList) {
 }
 function addPoint(px, py, r, k) {
   const x0 = Math.max(0, Math.floor(px - r)), x1 = Math.min(W - 1, Math.ceil(px + r)), y0 = Math.max(0, Math.floor(py - r)), y1 = Math.min(H - 1, Math.ceil(py + r));
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const d = Math.hypot(x - px, y - py); if (d < r) lm[y * W + x] += k * (1 - d / r) * (1 - d / r); }
+  const r2 = r * r, inv = 1 / r;
+  for (let y = y0; y <= y1; y++) { const dy = y - py, row = y * W; for (let x = x0; x <= x1; x++) { const dx = x - px, d2 = dx * dx + dy * dy; if (d2 < r2) { const f = 1 - Math.sqrt(d2) * inv; lm[row + x] += k * f * f; } } }
 }
+// Turn the light map into a dithered darkness mask (black with alpha) and lay it over the scene.
+const ALPHA = new Uint32Array(8);
+for (let q = 0; q <= 7; q++) { const a = Math.round((1 - q / 7) * 255); ALPHA[q] = LITTLE ? (a << 24 | 12 << 16 | 6 << 8 | 2) >>> 0 : (2 << 24 | 6 << 16 | 12 << 8 | a) >>> 0; }
 function applyLight() {
-  const src = ctx.getImageData(0, 0, W, H), d = src.data, LV = 7;
-  for (let y = 0; y < H; y++) { const by = (y & 3) * 4; for (let x = 0; x < W; x++) {
-    const i = y * W + x; let L = lm[i]; if (L >= 1) continue;
-    L = Math.floor(L * LV + BAYER[by + (x & 3)]) / LV;
-    const o = i * 4; d[o] *= L; d[o + 1] *= L; d[o + 2] *= L * 1.04 + .01;
+  const LV = 7, n = W * H;
+  for (let y = 0; y < H; y++) { const by = (y & 3) * 4, row = y * W; for (let x = 0; x < W; x++) {
+    const i = row + x, L = lm[i];
+    mask32[i] = L >= 1 ? 0 : ALPHA[Math.min(LV, Math.floor(L * LV + BAYER[by + (x & 3)]))];
   } }
-  ctx.putImageData(src, 0, 0);
+  mctx.putImageData(maskImg, 0, 0);
+  ctx.drawImage(mask, 0, 0);
 }
 
 function drawOverlay(cx, cy) {
-  fctx.setTransform(DPR, 0, 0, DPR, 0, 0); fctx.clearRect(0, 0, fx.width, fx.height);
-  if (G.state !== 'play' && G.state !== 'emergency') return;
+  const active = G.state === 'play' || G.state === 'emergency';
+  if (!active) { if (fxDirty) { fctx.setTransform(1, 0, 0, 1, 0, 0); fctx.clearRect(0, 0, fx.width, fx.height); fxDirty = false; } return; }
+  fctx.setTransform(DPR, 0, 0, DPR, 0, 0); fctx.clearRect(0, 0, fx.width / DPR, fx.height / DPR); fxDirty = true;
   const set = F.save.settings, K = SCALE;
   fctx.font = `600 ${set.largeText ? 14 : 12}px "Silkscreen", "IBM Plex Mono", monospace`; fctx.textAlign = 'center';
   const tag = (txt, x, y, col, bg = 'rgba(6,16,22,.78)') => { const w = fctx.measureText(txt).width + 12; fctx.fillStyle = bg; fctx.fillRect(Math.round(x - w / 2), Math.round(y - 13), Math.round(w), 18); fctx.fillStyle = col; fctx.fillText(txt, Math.round(x), Math.round(y)); };
@@ -526,9 +600,24 @@ G.drawRadar = (cv) => {
 };
 
 /* ---------- loop ---------- */
+let slowT = 0, fpsAcc = 0, fpsN = 0, fpsT = 0;
+G.fps = 0;
 function frame(now) {
-  const dt = Math.min(.05, (now - last) / 1000); last = now;
-  try { update(dt); render(); } catch (e) { console.error(e); }
+  const raw = (now - last) / 1000, dt = Math.min(.05, raw); last = now;
+  try {
+    update(dt);
+    // While paused the scene is frozen, so draw it once and then rest.
+    if (G.state !== 'paused' || needsRender) { render(); needsRender = false; }
+  } catch (e) { console.error(e); }
+  // FPS meter + automatic quality: if frames stay slow, use bigger pixels (fewer to draw).
+  if (raw < .25) {
+    fpsAcc += raw; fpsN++; fpsT += raw;
+    if (fpsT >= .5) { G.fps = Math.round(fpsN / fpsAcc); fpsAcc = fpsN = fpsT = 0; F.emit('fps', G.fps); }
+    if (G.state !== 'paused' && F.save.settings.pixel === 'auto' && autoBump < 2) {
+      slowT = raw > 1 / 42 ? slowT + raw : Math.max(0, slowT - raw * .5);
+      if (slowT > 3) { slowT = 0; autoBump++; G.resize(); }
+    }
+  }
   requestAnimationFrame(frame);
 }
 // Advance the simulation by a fixed amount of time (used for automated testing).
