@@ -231,9 +231,8 @@ function update(dt) {
     sub.vx += (ix * max - sub.vx) * Math.min(1, dt * 2.4);
     sub.vy += (iy * max - sub.vy) * Math.min(1, dt * 2.4);
   }
-  // facing: mouse aim wins when active, else movement
-  if (mouse.active > 0 && G.state === 'play') { const mx = mouse.x + camX; sub.face = mx >= sub.x ? 1 : -1; }
-  else if (Math.abs(ix) > .15) sub.face = Math.sign(ix);
+  // facing follows left/right input only (A/D, arrows, joystick, gamepad); the mouse just aims the lights
+  if (Math.abs(ix) > .15) sub.face = Math.sign(ix);
 
   // move with terrain collision
   const r = 7;

@@ -64,6 +64,15 @@ $('btnFull').addEventListener('click', () => { const d = document; if (d.fullscr
 const topIsClosable = () => stack.length && stack[stack.length - 1] !== 'debrief';
 $('btnMenu').addEventListener('click', () => topIsClosable() ? close() : open('menu'));
 $('btnPause').addEventListener('click', () => open('menu'));
+// End the dive without swimming back up. Asks for a second tap so a stray click doesn't end it.
+let endArmT = null;
+const endBtn = $('btnEndDive');
+const disarmEnd = () => { clearTimeout(endArmT); endArmT = null; endBtn.classList.remove('confirm'); endBtn.textContent = '▲ End dive'; };
+endBtn.addEventListener('click', () => {
+  if (G.state !== 'play' && G.state !== 'intro') return;
+  if (!endArmT) { endBtn.classList.add('confirm'); endBtn.textContent = 'Tap again to end'; endArmT = setTimeout(disarmEnd, 3000); return; }
+  disarmEnd(); G.endDive('ended');
+});
 
 /* ---------- title screen ---------- */
 document.querySelectorAll('.seg-b').forEach(b => b.addEventListener('click', () => {
@@ -105,7 +114,7 @@ F.on('state', s => {
 F.on('controlsOn', () => {
   if (!F.save.settings.hints) return;
   const touch = matchMedia('(pointer: coarse)').matches;
-  hint(touch ? 'Joystick to steer · Ping finds hidden animals · Rise to the surface to end the dive' : 'WASD or arrows to steer · Shift boost · Space sonar · Mouse aims lights · Rise to the surface to end', 9000);
+  hint(touch ? 'Joystick to steer · Ping finds hidden animals · Tap End dive or rise to the surface to finish' : 'WASD or arrows to steer · A/D turns the sub · Shift boost · Space sonar · Mouse aims lights · End dive button to finish', 9000);
 });
 let hintT;
 function hint(text, ms) { const h = $('hint'); h.textContent = text; h.hidden = false; clearTimeout(hintT); hintT = setTimeout(() => h.hidden = true, ms); }
@@ -191,7 +200,7 @@ renderers.debrief = () => {
   const s = G.session; if (!s) return;
   const b = $('debriefBody'); b.innerHTML = '';
   $('dKicker').textContent = `Dive ${F.save.dives} report · ${s.night ? 'Night' : 'Day'} dive`;
-  $('dT').textContent = s.reason === 'emergency' ? 'Emergency ascent' : 'Back on the surface';
+  $('dT').textContent = s.reason === 'emergency' ? 'Emergency ascent' : s.reason === 'ended' ? 'Dive complete' : 'Back on the surface';
   const mm = Math.floor(s.seconds / 60), ss = Math.floor(s.seconds % 60);
   b.appendChild(el('div', 'dstats', [
     [F.fmt(s.maxDepth) + ' m', 'Deepest point'], [`${mm}:${String(ss).padStart(2, '0')}`, 'Dive time'], [s.newIds.length, 'New species'], [s.studied.length, 'Fully studied'], ['+' + s.rp, 'RP earned'],
