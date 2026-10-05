@@ -148,6 +148,7 @@
       <button class="tile" data-open="settings" type="button"><b>☰</b>Settings</button>
       <button class="tile" data-open="help" type="button"><b>?</b>How to play</button>
       <button class="tile" data-open="about" type="button"><b>i</b>Sources</button>
+      <button class="tile span2" data-open="save" type="button"><b>⇩</b>Save link &amp; backup</button>
     </div>
     <button class="btn wide danger" id="mEnd" type="button">Surface and end dive</button>
   </div></div>
@@ -229,6 +230,17 @@
       </ul>
       <p class="muted small">Design notes: <a href="docs/blueprint.html">the original Fathom blueprint</a>. Sound is synthesised in the browser. Progress is saved only on this device.</p>
     </div>
+  </div></div>
+
+  <div class="modal" id="m-save" hidden><div class="panel sheet narrow" role="dialog" aria-modal="true" aria-labelledby="svT">
+    <header><div><div class="kicker">No account needed</div><h2 id="svT">Save your progress</h2></div><button class="x" data-close type="button" aria-label="Close">✕</button></header>
+    <div class="save" id="saveBody"></div>
+  </div></div>
+
+  <div class="modal" id="m-restore" hidden><div class="panel sheet narrow" role="dialog" aria-modal="true" aria-labelledby="rsT">
+    <header><div><div class="kicker">Save found</div><h2 id="rsT">Restore progress?</h2></div><button class="x" data-close type="button" aria-label="Close">✕</button></header>
+    <div class="save" id="restoreBody"></div>
+    <div class="row-btns"><button class="btn primary" id="restoreYes" type="button">Restore</button><button class="btn" id="restoreNo" type="button">Not now</button></div>
   </div></div>
 
   <div class="modal" id="m-debrief" hidden><div class="panel sheet" role="dialog" aria-modal="true" aria-labelledby="dT">

@@ -75,8 +75,16 @@ F.load = () => {
   if (!s || typeof s !== 'object') return d;
   return { ...d, ...s, upgrades: { ...d.upgrades, ...(s.upgrades || {}) }, settings: { ...d.settings, ...(s.settings || {}) } };
 };
-F.persist = () => { try { localStorage.setItem(KEY, JSON.stringify(F.save)); } catch (e) {} };
+F.storageOK = (() => { try { localStorage.setItem(KEY + '.test', '1'); localStorage.removeItem(KEY + '.test'); return true; } catch (e) { return false; } })();
+F.persist = () => { try { localStorage.setItem(KEY, JSON.stringify(F.save)); F.lastSaved = Date.now(); } catch (e) { F.storageOK = false; } };
 F.save = F.load();
+
+// Ask the browser not to clear our storage when space runs low (no prompt in Chrome/Edge/Safari).
+F.protectStorage = async () => {
+  try { if (navigator.storage && navigator.storage.persist && !(await navigator.storage.persisted())) await navigator.storage.persist(); } catch (e) {}
+  try { F.storageProtected = !!(navigator.storage && navigator.storage.persisted && await navigator.storage.persisted()); } catch (e) { F.storageProtected = false; }
+  return F.storageProtected;
+};
 
 /* ---------- tiny event bus ---------- */
 const handlers = {};
@@ -125,7 +133,7 @@ F.hullRating = () => F.save.settings.explorer ? 11000 : F.up('hull');
 const countIn = (pred) => Object.keys(F.save.logged).filter(id => F.byId[id] && pred(F.byId[id])).length;
 const hasAll = ids => ids.every(id => F.save.logged[id]);
 F.ACHIEVEMENTS = [
-  { id: 'first-splash', icon: '~', name: 'First Splash', desc: 'Finish your first dive.', check: s => s.dives >= 1 },
+  { id: 'first-splash', icon: '~', name: 'First Splash', desc: 'Make your first dive.', check: s => s.dives >= 1 },
   { id: 'first-contact', icon: '!', name: 'First Contact', desc: 'Log your first species.', check: () => F.loggedCount() >= 1 },
   { id: 'twilight', icon: '▼', name: 'Twilight Diver', desc: 'Reach 200 m.', check: s => s.maxDepth >= 200 },
   { id: 'midnight', icon: '▼', name: 'Midnight Explorer', desc: 'Reach 1,000 m.', check: s => s.maxDepth >= 1000 },
@@ -162,6 +170,61 @@ F.checkAchievements = () => {
   if (got.length) { F.persist(); got.forEach(a => F.emit('achievement', a)); }
   return got;
 };
+
+/* ---------- save codes ----------
+   All progress packed into ~90 characters: a version byte, the species count, 2 bits per species
+   (scans: 0 none, 1, 2, 3 = studied), landmark and award bitsets, upgrade levels, a few counters
+   as varints, and a checksum. Species are encoded by position in the species list, so new
+   species must always be appended to the end of tools/species.source.mjs. */
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const toB64 = bytes => { let s = '', i = 0; for (; i + 2 < bytes.length; i += 3) { const n = bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2]; s += B64[n >> 18 & 63] + B64[n >> 12 & 63] + B64[n >> 6 & 63] + B64[n & 63]; }
+  const r = bytes.length - i; if (r) { const n = bytes[i] << 16 | (r > 1 ? bytes[i + 1] << 8 : 0); s += B64[n >> 18 & 63] + B64[n >> 12 & 63] + (r > 1 ? B64[n >> 6 & 63] : ''); } return s; };
+const fromB64 = s => { const out = []; let buf = 0, bits = 0; for (const ch of s) { const v = B64.indexOf(ch); if (v < 0) throw new Error('bad char'); buf = buf << 6 | v; bits += 6; if (bits >= 8) { bits -= 8; out.push(buf >> bits & 255); } } return out; };
+const bitsOut = (bytes, flags) => { for (let i = 0; i < flags.length; i += 8) { let b = 0; for (let j = 0; j < 8; j++) if (flags[i + j]) b |= 1 << j; bytes.push(b); } };
+const bitsIn = (bytes, pos, n) => { const f = []; for (let i = 0; i < n; i++) f.push(!!(bytes[pos + (i >> 3)] >> (i & 7) & 1)); return f; };
+const varOut = (bytes, n) => { n = Math.max(0, Math.floor(n || 0)); do { let b = n & 127; n = Math.floor(n / 128); if (n) b |= 128; bytes.push(b); } while (n); };
+const varIn = (bytes, p) => { let n = 0, mul = 1, b; do { b = bytes[p.i++]; if (b === undefined) throw new Error('short'); n += (b & 127) * mul; mul *= 128; } while (b & 128); return n; };
+const COUNTERS = ['rp', 'rpTotal', 'dives', 'nightDives', 'maxDepth', 'pings', 'quizRight', 'playSeconds'];
+
+F.encodeSave = (s = F.save) => {
+  const bytes = [1], n = F.SPECIES.length;
+  bytes.push(n & 255, n >> 8);
+  const sc = []; F.SPECIES.forEach(sp => { const r = s.logged[sp.id]; const v = r ? Math.min(3, r.scans || 1) : 0; sc.push(!!(v & 1), !!(v & 2)); });
+  bitsOut(bytes, sc);
+  bitsOut(bytes, F.LANDMARKS.map(l => !!s.landmarks[l.id]));
+  bitsOut(bytes, F.ACHIEVEMENTS.map(a => !!s.achievements[a.id]));
+  F.UPGRADES.forEach(u => bytes.push(s.upgrades[u.id] || 0));
+  COUNTERS.forEach(k => varOut(bytes, s[k]));
+  bytes.push(bytes.reduce((a, b) => (a * 31 + b) & 255, 7));
+  return toB64(bytes);
+};
+F.decodeSave = code => {
+  const bytes = fromB64(String(code).trim().replace(/^.*[#&]save=/, '').replace(/[^A-Za-z0-9_-]/g, ''));
+  const sum = bytes.pop();
+  if (bytes.reduce((a, b) => (a * 31 + b) & 255, 7) !== sum) throw new Error('checksum');
+  if (bytes[0] !== 1) throw new Error('version');
+  const n = bytes[1] | bytes[2] << 8; let pos = 3;
+  const sc = bitsIn(bytes, pos, n * 2); pos += Math.ceil(n * 2 / 8);
+  const lm = bitsIn(bytes, pos, F.LANDMARKS.length); pos += Math.ceil(F.LANDMARKS.length / 8);
+  const ac = bitsIn(bytes, pos, F.ACHIEVEMENTS.length); pos += Math.ceil(F.ACHIEVEMENTS.length / 8);
+  const s = F.defaultSave(), today = F.today();
+  for (let i = 0; i < Math.min(n, F.SPECIES.length); i++) { const v = (sc[i * 2] ? 1 : 0) | (sc[i * 2 + 1] ? 2 : 0); if (v) { const sp = F.SPECIES[i]; s.logged[sp.id] = { scans: v, first: today, depth: sp.m, night: false }; } }
+  F.LANDMARKS.forEach((l, i) => { if (lm[i]) s.landmarks[l.id] = today; });
+  F.ACHIEVEMENTS.forEach((a, i) => { if (ac[i]) s.achievements[a.id] = today; });
+  F.UPGRADES.forEach(u => { s.upgrades[u.id] = Math.min(u.levels.length - 1, bytes[pos++] || 0); });
+  const p = { i: pos }; COUNTERS.forEach(k => { s[k] = varIn(bytes, p); });
+  return s;
+};
+// Combine two saves without losing anything: union of discoveries, best of every counter.
+F.mergeSave = (a, b) => {
+  const out = { ...a, logged: { ...a.logged }, landmarks: { ...b.landmarks, ...a.landmarks }, achievements: { ...b.achievements, ...a.achievements }, upgrades: { ...a.upgrades } };
+  for (const [id, r] of Object.entries(b.logged)) { const mine = out.logged[id]; out.logged[id] = mine ? { ...mine, scans: Math.max(mine.scans, r.scans) } : { ...r }; }
+  for (const k of Object.keys(out.upgrades)) out.upgrades[k] = Math.max(a.upgrades[k] || 0, b.upgrades[k] || 0);
+  COUNTERS.forEach(k => { out[k] = Math.max(a[k] || 0, b[k] || 0); });
+  return out;
+};
+F.saveSummary = s => ({ logged: Object.keys(s.logged).filter(id => F.byId[id]).length, rp: s.rp, dives: s.dives, maxDepth: s.maxDepth });
+F.saveLink = () => location.origin + location.pathname + '#save=' + F.encodeSave();
 
 /* ---------- daily expedition ---------- */
 F.dailyGoal = () => {

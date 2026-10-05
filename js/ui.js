@@ -81,7 +81,7 @@ $('dMenu').addEventListener('click', () => { closeAll(); G.toMenu(); });
 
 function refreshTitle() {
   const s = F.save;
-  $('statline').innerHTML = `<span>Dives <b>${s.dives}</b></span><span>Logged <b>${F.loggedCount()}/${total}</b></span><span>Deepest <b>${F.fmt(s.maxDepth)} m</b></span><span>RP <b>${F.fmt(s.rp)}</b></span>`;
+  $('statline').innerHTML = `<span>Dives <b>${s.dives}</b></span><span>Logged <b>${F.loggedCount()}/${total}</b></span><span>Deepest <b>${F.fmt(s.maxDepth)} m</b></span><span>RP <b>${F.fmt(s.rp)}</b></span><button class="savelink" data-open="save" type="button">⇩ Save link</button>`;
   const d = F.dailyGoal();
   const card = $('dailyCard');
   card.classList.toggle('done', !!d.done);
@@ -206,6 +206,10 @@ renderers.debrief = () => {
   if (s.achievements.length) b.appendChild(el('p', '', '<span class="lbl">Awards</span><br>' + s.achievements.map(a => '★ ' + esc(a.name)).join(' · ')));
   const d = F.dailyGoal();
   b.appendChild(el('p', 'muted small', `Daily expedition: ${esc(d.text)} — ${d.done ? 'complete ✓' : `${d.progress}/${d.n}`}`));
+  if (F.loggedCount() - (F.save.backedUpAt || 0) >= 5) {
+    const nudge = el('div', 'nudge', `<div><b>Don't lose your ${F.loggedCount()} species.</b><br><span class="muted small">Get a save link to keep your progress safe and continue on any device.</span></div>`);
+    const sb = el('button', 'btn', '⇩ Get save link'); sb.type = 'button'; sb.dataset.open = 'save'; nudge.appendChild(sb); b.appendChild(nudge);
+  }
   b.appendChild(quiz(s));
 };
 
@@ -496,18 +500,85 @@ renderers.settings = () => {
   }
   // save management
   const data = el('div', 'data-box');
-  const ta = el('textarea'); ta.id = 'saveText'; ta.placeholder = 'Paste a save here to import it'; ta.setAttribute('aria-label', 'Save data');
   const row = el('div', 'links-row');
-  const exp = el('button', 'btn', 'Export save'), imp = el('button', 'btn', 'Import save'), rst = el('button', 'btn danger', 'Reset progress');
-  [exp, imp, rst].forEach(b => { b.type = 'button'; row.appendChild(b); });
+  const sv = el('button', 'btn', 'Save link & backup'), rst = el('button', 'btn danger', 'Reset progress');
+  [sv, rst].forEach(b => { b.type = 'button'; row.appendChild(b); });
   const msg = el('p', 'muted small');
-  exp.addEventListener('click', async () => { ta.value = JSON.stringify(F.save); ta.select(); try { await navigator.clipboard.writeText(ta.value); msg.textContent = 'Save copied to the clipboard. Keep it somewhere safe.'; } catch (e) { msg.textContent = 'Save shown above. Select it and copy it.'; } });
-  imp.addEventListener('click', () => { try { const j = JSON.parse(ta.value); if (!j || typeof j !== 'object' || !j.logged) throw 0; localStorage.setItem('fathom.save.v2', JSON.stringify(j)); F.save = F.load(); applySettings(); refreshTitle(); msg.textContent = 'Save imported.'; } catch (e) { msg.textContent = 'That does not look like a Fathom save. Paste the full text from Export save.'; } });
+  sv.addEventListener('click', () => open('save'));
   let armed = false;
   rst.addEventListener('click', () => { if (!armed) { armed = true; rst.textContent = 'Click again to erase everything'; setTimeout(() => { armed = false; rst.textContent = 'Reset progress'; }, 4000); return; } const keep = F.save.settings; F.save = F.defaultSave(); F.save.settings = keep; F.persist(); refreshTitle(); msg.textContent = 'Progress erased. Settings were kept.'; armed = false; rst.textContent = 'Reset progress'; });
-  data.append(el('div', 'lbl', 'Your save lives in this browser only'), ta, row, msg);
+  data.append(el('div', 'lbl', 'Progress saves automatically in this browser'), row, msg);
   box.appendChild(data);
 };
+
+/* ---------- save link, code and file ---------- */
+const copyText = async (text, input, note) => {
+  try { await navigator.clipboard.writeText(text); note.textContent = 'Copied ✓'; }
+  catch (e) { input.focus(); input.select(); note.textContent = 'Press Ctrl+C (or long-press → Copy) to copy.'; }
+  F.save.backedUpAt = F.loggedCount(); F.persist();
+};
+renderers.save = () => {
+  const box = $('saveBody'), sum = F.saveSummary(F.save);
+  const link = F.saveLink(), code = F.encodeSave();
+  box.innerHTML = `
+    <p class="muted">Your progress saves automatically in this browser. It can be lost in private windows, in apps like Instagram or WhatsApp, if browser data is cleared, or when you switch devices. A save link brings everything back on any device.</p>
+    <div class="save-sum"><b>${sum.logged}/${total}</b> species · <b>${F.fmt(sum.rp)}</b> RP · <b>${sum.dives}</b> dives · deepest <b>${F.fmt(sum.maxDepth)} m</b></div>
+    <div class="save-row"><div class="lbl">Your save link · bookmark it or send it to yourself</div>
+      <div class="copy"><input id="saveLink" readonly value="${esc(link)}" aria-label="Save link"><button class="btn primary" id="copyLink" type="button">Copy link</button></div><p class="muted small" id="linkNote"></p></div>
+    <div class="save-row"><div class="lbl">Save code · type it in on another device</div>
+      <div class="copy"><input id="saveCode" readonly value="${esc(code)}" aria-label="Save code"><button class="btn" id="copyCode" type="button">Copy code</button></div><p class="muted small" id="codeNote"></p></div>
+    <div class="save-row"><div class="lbl">Save file</div>
+      <div class="links-row"><button class="btn" id="dlSave" type="button">Download save file</button><label class="btn" for="loadSave">Load save file</label><input id="loadSave" type="file" accept=".json,.txt,application/json,text/plain" hidden></div></div>
+    <div class="save-row"><div class="lbl">Restore from a code or link</div>
+      <div class="copy"><input id="restoreCode" placeholder="Paste a save code or link" aria-label="Save code to restore" autocomplete="off"><button class="btn" id="restoreBtn" type="button">Restore</button></div><p class="muted small" id="restoreNote"></p></div>
+    <p class="muted small" id="protectNote"></p>`;
+  $('copyLink').addEventListener('click', () => copyText(link, $('saveLink'), $('linkNote')));
+  $('copyCode').addEventListener('click', () => copyText(code, $('saveCode'), $('codeNote')));
+  $('dlSave').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify({ game: 'Fathom', code, saved: new Date().toISOString(), save: F.save }, null, 1)], { type: 'application/json' });
+    const a = el('a'); a.href = URL.createObjectURL(blob); a.download = `fathom-save-${F.today()}.json`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000); F.save.backedUpAt = F.loggedCount(); F.persist();
+  });
+  $('loadSave').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { const j = JSON.parse(await f.text()); const incoming = j.save && j.save.logged ? { ...F.defaultSave(), ...j.save } : F.decodeSave(j.code); askRestore(incoming); }
+    catch (err) { $('restoreNote').textContent = 'That file is not a Fathom save.'; }
+  });
+  $('restoreBtn').addEventListener('click', () => {
+    try { askRestore(F.decodeSave($('restoreCode').value)); }
+    catch (err) { $('restoreNote').textContent = 'That code is not valid. Check it was copied completely.'; }
+  });
+  F.protectStorage().then(p => { const n = $('protectNote'); if (n) n.textContent = !F.storageOK ? '⚠ This browser is blocking storage (private mode?). Use the save link to keep your progress.' : p ? '✓ This browser has agreed to keep your save safe from automatic clean-up.' : ''; });
+};
+// Ask before applying a save from a link, code or file. Merging keeps the best of both.
+let pendingRestore = null;
+function askRestore(incoming) {
+  pendingRestore = incoming;
+  const a = F.saveSummary(F.save), b = F.saveSummary(incoming);
+  $('restoreBody').innerHTML = `<p>This save has <b>${b.logged}</b> species, <b>${F.fmt(b.rp)}</b> RP and <b>${b.dives}</b> dives.</p>
+    <p class="muted">This browser currently has ${a.logged} species, ${F.fmt(a.rp)} RP and ${a.dives} dives. Restoring combines both and keeps the best of each, so nothing is lost.</p>`;
+  open('restore');
+}
+$('restoreYes').addEventListener('click', () => {
+  if (!pendingRestore) return close();
+  const settings = F.save.settings;
+  F.save = { ...F.mergeSave(F.save, pendingRestore), settings };
+  F.persist(); pendingRestore = null; closeAll(); refreshTitle(); F.checkAchievements();
+  if (G.state === 'paused') G.resume();
+  toast(`Progress restored · ${F.loggedCount()} species logged`, 'good', 5000);
+});
+$('restoreNo').addEventListener('click', () => { pendingRestore = null; close(); });
+// Opened from a save link: offer to restore, then tidy the address bar.
+function checkSaveLink() {
+  const m = location.hash.match(/save=([A-Za-z0-9_-]+)/);
+  if (!m) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  try {
+    const incoming = F.decodeSave(m[1]);
+    if (F.encodeSave(F.mergeSave(F.save, incoming)) === F.encodeSave(F.save)) { toast('This save link is already up to date on this device.', 'good'); return; }
+    askRestore(incoming);
+  } catch (e) { toast('That save link is damaged or incomplete.', 'warn'); }
+}
 function applySettings() {
   const s = F.save.settings; F.persist();
   body.classList.toggle('no-crt', !s.scanlines);
@@ -541,4 +612,8 @@ G.start();
 G.toMenu();
 refreshTitle();
 F.checkAchievements();
+checkSaveLink();
+addEventListener('hashchange', checkSaveLink);
+if (F.loggedCount() > 0) F.protectStorage();
+F.on('discover', () => { if (F.loggedCount() === 1) F.protectStorage(); if (!F.storageOK && !shownOnce.has('nostore')) { shownOnce.add('nostore'); toast('This browser is not keeping your progress (private mode?). Open the menu → Save to get a save link.', 'warn', 8000); } });
 })();

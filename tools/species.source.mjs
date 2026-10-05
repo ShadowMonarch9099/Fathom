@@ -12,6 +12,9 @@
 // school   how many to draw together
 // cm       approximate maximum length in centimetres (drives sprite size)
 // art      pixel-art archetype + colours (see js/sprites.js)
+//
+// IMPORTANT: always add new species at the END of this list. Save codes and save links
+// store species by their position, so inserting or reordering would scramble old saves.
 
 export const SPECIES = [
   // ---------------- SUNLIGHT ZONE · surface & open water ----------------

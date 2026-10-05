@@ -72,4 +72,11 @@ tools/                data build script and local server
 docs/blueprint.html   original design blueprint
 ```
 
-Progress is saved in the browser's localStorage.
+## Saving progress (no accounts, no database)
+
+- Progress saves automatically to the browser's localStorage after every discovery, every few seconds while diving, and when the tab is hidden or closed.
+- The game asks the browser to protect that storage from automatic clean-up (`navigator.storage.persist()`).
+- **Save link / save code:** all progress is packed into an ~80–100 character code (species scans as 2 bits each, landmarks, awards, upgrades and counters, plus a checksum). Opening `https://deepseadive.vercel.app/#save=CODE` on any device offers to restore it. Restoring merges with what's already there and keeps the best of both.
+- **Save file:** download and load a JSON backup from the Save panel.
+
+Species are stored in save codes by their position in the list, so new species must always be appended to the end of `tools/species.source.mjs`.

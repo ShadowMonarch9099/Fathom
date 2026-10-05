@@ -127,18 +127,30 @@ G.startDive = (night) => {
   sub.x = 10; sub.y = 3; sub.vx = 0; sub.vy = 30; sub.face = 1; sub.hull = 100;
   sub.battery = 100; sub.lights = false; zoneNow = 0; ping = null; pingCd = 0; scanT = null; scanP = 0;
   bubbles.length = 0; sparks.length = 0;
+  // Count the dive as soon as it starts, so closing the tab mid-dive still records it.
+  F.save.dives++; if (G.night) F.save.nightDives++; F.persist();
   setState('intro'); A.play('splash'); A.setMode('dive');
   for (let i = 0; i < 26; i++) bubbles.push({ x: sub.x + (Math.random() - .5) * 30, y: sub.y + Math.random() * 10, r: Math.random() < .3 ? 2 : 1, life: 1 + Math.random() });
 };
+// Write the current dive's depth record and play time into the save. Called every few
+// seconds while diving, when the tab is hidden or closed, and when the dive ends.
+function saveDiveProgress() {
+  if (!session) return;
+  const s = F.save, now = performance.now();
+  s.maxDepth = Math.max(s.maxDepth, session.maxDepth);
+  s.playSeconds += (now - (session.savedAt || session.start)) / 1000; session.savedAt = now;
+  F.persist();
+}
+let autosaveT = 0;
+const flush = () => { if (session && ['intro', 'play', 'paused', 'emergency'].includes(G.state)) saveDiveProgress(); else F.persist(); };
+addEventListener('pagehide', flush);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(); });
 G.pause = () => { if (G.state === 'play' || G.state === 'intro') { G.prevState = G.state; setState('paused'); } };
 G.resume = () => { if (G.state === 'paused') { setState(G.prevState || 'play'); last = performance.now(); } };
 G.endDive = (reason = 'surface') => {
   if (!session) return;
   session.reason = reason; session.seconds = (performance.now() - session.start) / 1000;
-  const s = F.save;
-  s.dives++; if (session.night) s.nightDives++;
-  s.maxDepth = Math.max(s.maxDepth, session.maxDepth); s.playSeconds += session.seconds;
-  F.persist();
+  saveDiveProgress();
   session.achievements.push(...F.checkAchievements());
   G.scanTarget = null; setState('debrief'); A.play('surface'); A.setMode('menu'); A.setDepth(0, false);
   sub.lights = false; sub.vx = sub.vy = 0;
@@ -299,6 +311,7 @@ function update(dt) {
   particles(dt);
   if (G.state === 'play') scan(dt, spd);
   hudT -= dt; if (hudT <= 0) { hudT = .1; emitHud(m, zi, rating); }
+  autosaveT -= dt; if (autosaveT <= 0) { autosaveT = 4; saveDiveProgress(); }
 }
 
 function particles(dt) {
