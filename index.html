@@ -210,7 +210,7 @@
         <tr><td><kbd>L</kbd></td><td>Headlights on or off</td></tr>
         <tr><td><kbd>A</kbd> / <kbd>D</kbd></td><td>Turn the sub left or right</td></tr>
         <tr><td>Mouse</td><td>Aim the headlights in front of the sub</td></tr>
-        <tr><td>End dive</td><td>Finish the dive from any depth (tap twice)</td></tr>
+        <tr><td>End dive</td><td>Finish the dive from any depth</td></tr>
         <tr><td><kbd>J</kbd></td><td>Field guide</td></tr>
         <tr><td><kbd>M</kbd></td><td>Mute</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>Pause and menu</td></tr>
@@ -244,6 +244,12 @@
     <header><div><div class="kicker">Save found</div><h2 id="rsT">Restore progress?</h2></div><button class="x" data-close type="button" aria-label="Close">✕</button></header>
     <div class="save" id="restoreBody"></div>
     <div class="row-btns"><button class="btn primary" id="restoreYes" type="button">Restore</button><button class="btn" id="restoreNo" type="button">Not now</button></div>
+  </div></div>
+
+  <div class="modal" id="m-enddive" hidden><div class="panel sheet narrow" role="dialog" aria-modal="true" aria-labelledby="edT">
+    <header><div><div class="kicker">Dive paused</div><h2 id="edT">End this dive?</h2></div><button class="x" data-close type="button" aria-label="Close">✕</button></header>
+    <p id="endDiveText"></p>
+    <div class="row-btns"><button class="btn primary" id="endYes" type="button">▲ End dive</button><button class="btn" id="endNo" type="button">Keep diving</button></div>
   </div></div>
 
   <div class="modal" id="m-debrief" hidden><div class="panel sheet" role="dialog" aria-modal="true" aria-labelledby="dT">

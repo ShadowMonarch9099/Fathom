@@ -103,7 +103,6 @@ body.playing .corner.right { display: none; }
 .hud-top-right { position: absolute; right: 12px; top: 12px; display: flex; gap: 6px; align-items: center; }
 .chip.end-dive { height: 40px; padding: 0 12px; color: var(--amber); border-color: var(--amber-d); }
 .chip.end-dive:hover { border-color: var(--amber); }
-.chip.end-dive.confirm { background: var(--amber); color: #2a1700; border-color: #ffd28a; }
 .pill { font: 400 calc(11px * var(--fs))/1 var(--f-ui); letter-spacing: .06em; padding: 12px 12px; background: rgba(8, 20, 28, .82); border: 2px solid var(--edge); clip-path: var(--notch); }
 .gauge { position: absolute; right: 18px; top: 70px; bottom: 170px; width: 14px; }
 .gauge-zones { position: absolute; inset: 0; display: flex; flex-direction: column; border: 2px solid var(--edge); background: var(--well); }

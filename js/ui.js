@@ -64,15 +64,15 @@ $('btnFull').addEventListener('click', () => { const d = document; if (d.fullscr
 const topIsClosable = () => stack.length && stack[stack.length - 1] !== 'debrief';
 $('btnMenu').addEventListener('click', () => topIsClosable() ? close() : open('menu'));
 $('btnPause').addEventListener('click', () => open('menu'));
-// End the dive without swimming back up. Asks for a second tap so a stray click doesn't end it.
-let endArmT = null;
-const endBtn = $('btnEndDive');
-const disarmEnd = () => { clearTimeout(endArmT); endArmT = null; endBtn.classList.remove('confirm'); endBtn.textContent = '▲ End dive'; };
-endBtn.addEventListener('click', () => {
+// End the dive without swimming back up, after a confirmation popup (the game pauses while it's open).
+$('btnEndDive').addEventListener('click', () => {
   if (G.state !== 'play' && G.state !== 'intro') return;
-  if (!endArmT) { endBtn.classList.add('confirm'); endBtn.textContent = 'Tap again to end'; endArmT = setTimeout(disarmEnd, 3000); return; }
-  disarmEnd(); G.endDive('ended');
+  const s = G.session, n = s ? s.newIds.length : 0;
+  $('endDiveText').textContent = `You're at ${F.fmt(Math.max(0, F.metersAt(G.sub.y)))} m with ${n} new species this dive. Everything you've found is saved.`;
+  open('enddive');
 });
+$('endYes').addEventListener('click', () => { closeAll(); G.resume(); G.endDive('ended'); });
+$('endNo').addEventListener('click', () => close());
 
 /* ---------- title screen ---------- */
 document.querySelectorAll('.seg-b').forEach(b => b.addEventListener('click', () => {
