@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Deep Sea Dive: Explore Real Ocean Animals | Fathom</title>
 <meta name="description" content="Pilot a submarine to the bottom of the Mariana Trench and discover 141 real deep sea creatures. A free ocean game for curious minds, no walls of text.">
+<meta name="author" content="Kush Honkalse">
 <meta name="keywords" content="deep sea creatures, ocean animals, ocean zones, marine biology game, sea life, Mariana Trench, bioluminescence, educational game">
 <link rel="canonical" href="https://deepseadive.vercel.app/">
 <meta name="theme-color" content="#07131a">
@@ -75,6 +76,7 @@
       </div>
       <aside class="daily" id="dailyCard" aria-label="Daily expedition"></aside>
       <div class="statline" id="statline"></div>
+      <p class="credit">© 2026 <a href="https://github.com/ShadowMonarch9099" target="_blank" rel="noopener">Kush Honkalse</a> · <button class="savelink" data-open="aboutgame" type="button">About Fathom</button></p>
     </div>
   </section>
 
@@ -147,6 +149,7 @@
       <button class="tile" data-open="hangar" type="button"><b>⚙</b>Hangar</button>
       <button class="tile" data-open="achievements" type="button"><b>★</b>Awards</button>
       <button class="tile" data-open="settings" type="button"><b>☰</b>Settings</button>
+      <button class="tile" data-open="aboutgame" type="button"><b>◎</b>About Fathom</button>
       <button class="tile" data-open="help" type="button"><b>?</b>How to play</button>
       <button class="tile" data-open="about" type="button"><b>i</b>Sources</button>
       <button class="tile span2" data-open="save" type="button"><b>⇩</b>Save link &amp; backup</button>
@@ -220,6 +223,38 @@
     </div>
   </div></div>
 
+  <div class="modal" id="m-aboutgame" hidden><div class="panel sheet" role="dialog" aria-modal="true" aria-labelledby="agT">
+    <header><div><div class="kicker">About this page</div><h2 id="agT">Why I built Fathom</h2></div><button class="x" data-close type="button" aria-label="Close">✕</button></header>
+    <div class="aboutgame">
+      <section>
+        <h3>The problem</h3>
+        <p>Imagine a student, or anyone, who gets curious about life in the ocean. They search for it and the first result is an encyclopedia page: thousands of words, technical terms and tables. They skim a paragraph or two, close the tab, and the curiosity is gone.</p>
+        <p>The ocean is the largest living space on Earth, and most of it is dark, cold and still being explored. It deserves better than a wall of text.</p>
+      </section>
+      <section>
+        <h3>The solution</h3>
+        <p>Fathom turns learning about the ocean into a dive. You pilot a small submarine from the sunlit surface to the bottom of the Mariana Trench, 10,935 m down. The deeper you go, the darker it gets, and you meet real animals where they actually live. Each discovery gives you one short fact, at the moment you see the animal it describes.</p>
+        <p>Depth is the progress bar. The darkness is the lesson about light. You learn the structure of the ocean by moving through it.</p>
+      </section>
+      <section>
+        <h3>What you can do</h3>
+        <div class="feat-grid">
+          <div><h4>Explore</h4><ul><li>Five real ocean zones, from Sunlight to Hadal</li><li>A full cross-section: beach, seagrass, coral reef, kelp forest, continental slope, whale fall, shipwreck, abyssal plain, hydrothermal vents and the Challenger Deep</li><li>Live depth, pressure, temperature and sunlight readouts</li><li>Day and night dives; some animals rise to the surface only after dark</li></ul></div>
+          <div><h4>Discover</h4><ul><li>141 real species, each with a hand-written fact</li><li>Headlights you aim yourself as sunlight fades, and animals that make their own light</li><li>Scan animals by holding still near them; fast movement scares small ones away</li><li>Sonar pings and a radar to find hidden life and landmarks</li></ul></div>
+          <div><h4>Learn</h4><ul><li>A field guide with pixel art, depth range, size and diet</li><li>Wikipedia summaries and photos for logged species</li><li>Charts of the depths where scientists have recorded each animal</li><li>A World Register search of 240,000+ marine species</li><li>A short quiz after every dive to check what stuck</li></ul></div>
+          <div><h4>Progress</h4><ul><li>Research points to upgrade the hull, battery, lights, sonar, thrusters and scanner</li><li>A stronger hull unlocks deeper zones</li><li>26 awards, depth milestones and a daily expedition</li><li>Study species by scanning them on three dives</li></ul></div>
+          <div><h4>Play your way</h4><ul><li>Keyboard, mouse, gamepad and touch controls</li><li>Explorer mode with no depth or battery limits, for classrooms</li><li>Volume, pixel size, scanlines, reduced motion, larger text and high contrast</li><li>Music and sound made live in the browser</li></ul></div>
+          <div><h4>Keep your progress</h4><ul><li>Saves automatically, with no account and no sign-up</li><li>A save link or code to continue on any device</li><li>A downloadable save file as a backup</li></ul></div>
+        </div>
+      </section>
+      <section>
+        <h3>Where the facts come from</h3>
+        <p>Every animal is a real species. Names and classification come from the World Register of Marine Species (WoRMS), sighting records from the Ocean Biodiversity Information System (OBIS), and summaries and photos from Wikipedia. The whole game runs in your browser with plain HTML, CSS and JavaScript.</p>
+      </section>
+      <p class="credit-line">© 2026 Kush Honkalse. All rights reserved. · <a href="https://github.com/ShadowMonarch9099" target="_blank" rel="noopener">GitHub</a> · <button class="savelink" data-open="about" type="button">Sources &amp; credits</button></p>
+    </div>
+  </div></div>
+
   <div class="modal" id="m-about" hidden><div class="panel sheet narrow" role="dialog" aria-modal="true" aria-labelledby="abT">
     <header><div><div class="kicker">Credits</div><h2 id="abT">Sources</h2></div><button class="x" data-close type="button" aria-label="Close">✕</button></header>
     <div class="about">
@@ -231,7 +266,8 @@
         <li><a href="https://oceanexplorer.noaa.gov/" target="_blank" rel="noopener">NOAA Ocean Exploration</a><span>Ocean zones, light and pressure</span></li>
         <li><a href="https://www.mbari.org/" target="_blank" rel="noopener">MBARI</a><span>Deep-sea animal research</span></li>
       </ul>
-      <p class="muted small">Design notes: <a href="docs/blueprint.html">the original Fathom blueprint</a>. Sound is synthesised in the browser. Progress is saved only on this device.</p>
+      <p class="muted small">Design notes: <a href="docs/blueprint.html">the original Fathom blueprint</a>. Sound is synthesised in the browser. Progress is saved in this browser; use a save link to move it to another device.</p>
+      <p class="credit-line">© 2026 Kush Honkalse · <a href="https://github.com/ShadowMonarch9099/Fathom" target="_blank" rel="noopener">Source on GitHub</a></p>
     </div>
   </div></div>
 

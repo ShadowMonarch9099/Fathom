@@ -80,3 +80,7 @@ docs/blueprint.html   original design blueprint
 - **Save file:** download and load a JSON backup from the Save panel.
 
 Species are stored in save codes by their position in the list, so new species must always be appended to the end of `tools/species.source.mjs`.
+
+---
+
+© 2026 Kush Honkalse. All rights reserved.
